@@ -40,9 +40,10 @@ class Settings(BaseSettings):
         }
         
         for var_name, value in critical_env_vars.items():
+            # - logged the first 15 chars of each secret; short keys were logged in full
+            # - log presence only
             if value:
-                preview = value[:15] + "..." if len(value) > 15 else value
-                logger.info(f"✅ ENV {var_name}: {preview} (len: {len(value)})")
+                logger.info(f"✅ ENV {var_name}: set")
             else:
                 logger.info(f"❌ ENV {var_name}: NOT SET")
         
@@ -61,8 +62,7 @@ class Settings(BaseSettings):
         
         for field_name, value in loaded_values.items():
             if value:
-                preview = str(value)[:15] + "..." if len(str(value)) > 15 else str(value)
-                logger.info(f"✅ LOADED {field_name}: {preview} (len: {len(str(value))})")
+                logger.info(f"✅ LOADED {field_name}: set")
             else:
                 logger.info(f"❌ LOADED {field_name}: NOT SET")
         
@@ -143,7 +143,6 @@ class Settings(BaseSettings):
                 return {}
 
             logger.debug(f"HOSTAWAY_TOKENS length: {len(self.hostaway_tokens)}")
-            logger.debug(f"HOSTAWAY_TOKENS preview: {self.hostaway_tokens[:100]}...")
 
             # First try to parse as JSON
             try:
@@ -178,7 +177,6 @@ class Settings(BaseSettings):
 
         except Exception as e:
             logger.error(f"Unexpected error parsing HOSTAWAY_TOKENS: {e}")
-            logger.error(f"Raw value: {self.hostaway_tokens}")
             return {}
 
     def get_hostaway_token_for_city(self, city: str) -> Union[str, None]:

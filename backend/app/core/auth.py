@@ -98,10 +98,11 @@ async def authenticate_request(
             # Remove expired cache entry
             del auth_cache[token_hash]
 
-    logger.info(f"AUTH: Starting authentication - Token hash: {token_hash}, Token preview: {token[:20]}...")
+    # - token prefixes in logs leak credentials; the hash is enough to correlate requests
+    logger.info(f"AUTH: Starting authentication - Token hash: {token_hash}")
 
     try:
-        logger.debug(f"AUTH: Verifying token with Supabase - Token: {token[:20]}...")
+        logger.debug(f"AUTH: Verifying token - Token hash: {token_hash}")
 
         # Verify token - handle both Supabase tokens and custom JWT tokens
         try:
@@ -416,7 +417,7 @@ def clear_auth_cache():
 async def verify_token_ws(token: str) -> Optional[AuthenticatedUser]:
     """Verify JWT token for WebSocket connections using same approach as regular authentication"""
     try:
-        logger.debug(f"WS_AUTH: Verifying WebSocket token - Token preview: {token[:20]}...")
+        logger.debug("WS_AUTH: Verifying WebSocket token")
 
         # Use same Supabase verification as regular authentication
         try:
