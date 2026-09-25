@@ -4,7 +4,7 @@ import asyncio
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +15,12 @@ import os
 import time
 
 from app.core.redis_client import redis_client
+from .core.auth import require_permission
+
+# - reset/configure/clear-cache were public: anyone could flip circuit breakers or wipe caches
+# - now admin only; read-only status endpoints stay open for health checks
+require_admin = require_permission("system", "admin")
+
 from .api.v1 import (
     users_lightning,
     cities,
@@ -290,7 +296,7 @@ async def api_database_health():
 
 # Circuit breaker management endpoints
 @app.post("/api/v1/circuit-breaker/reset")
-async def reset_circuit_breaker():
+async def reset_circuit_breaker(_admin=Depends(require_admin)):
     """Reset circuit breakers to allow operations to resume"""
     try:
         from .core.supabase_connection_pool import supabase_pool
@@ -364,7 +370,7 @@ async def circuit_breaker_status():
 
 
 @app.post("/api/v1/circuit-breaker/configure")
-async def configure_circuit_breaker(request: Request):
+async def configure_circuit_breaker(request: Request, _admin=Depends(require_admin)):
     """Configure circuit breaker thresholds and timeouts"""
     try:
         body = await request.json()
@@ -415,7 +421,7 @@ async def fallback_status():
 
 
 @app.post("/api/v1/fallback/clear-cache")
-async def clear_fallback_cache():
+async def clear_fallback_cache(_admin=Depends(require_admin)):
     """Clear the fallback service cache"""
     try:
         from .core.circuit_breaker_fallback import fallback_service
