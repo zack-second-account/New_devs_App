@@ -19,11 +19,12 @@ async def get_dashboard_summary(
     except RevenueUnavailableError as e:
         raise HTTPException(status_code=503, detail=str(e))
     
-    total_revenue_float = float(revenue_data['total'])
-    
+    # - float() on money reintroduced binary rounding errors.
+    # - send the exact 2-decimal string.
+    # - cost: clients parse a string; exact beats convenient for money
     return {
         "property_id": revenue_data['property_id'],
-        "total_revenue": total_revenue_float,
+        "total_revenue": revenue_data['total'],
         "currency": revenue_data['currency'],
         "reservations_count": revenue_data['count']
     }

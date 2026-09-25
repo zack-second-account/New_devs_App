@@ -1,10 +1,17 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Any, List
 
 
 class RevenueUnavailableError(Exception):
     """Revenue could not be read from the database."""
+
+
+def to_cents(amount) -> Decimal:
+    # - amounts are NUMERIC(10,3) (sub-cent) and the API sent a float, so totals drifted by cents.
+    # - sum exactly in SQL, round once to cents here, half-up.
+    # - cost: sub-cent detail stays in the DB only
+    return Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 async def calculate_monthly_revenue(property_id: str, month: int, year: int, db_session=None) -> Decimal:
     """
@@ -50,33 +57,29 @@ async def calculate_total_revenue(property_id: str, tenant_id: str) -> Dict[str,
                 # Use SQLAlchemy text for raw SQL
                 from sqlalchemy import text
                 
+                # - currency was hardcoded to USD.
+                # - read it from the rows; GROUP BY currency surfaces mixed currencies.
                 query = text("""
-                    SELECT 
-                        property_id,
+                    SELECT
+                        currency,
                         SUM(total_amount) as total_revenue,
                         COUNT(*) as reservation_count
-                    FROM reservations 
+                    FROM reservations
                     WHERE property_id = :property_id AND tenant_id = :tenant_id
-                    GROUP BY property_id
+                    GROUP BY currency
                 """)
-                
+
                 result = await session.execute(query, {
-                    "property_id": property_id, 
+                    "property_id": property_id,
                     "tenant_id": tenant_id
                 })
-                row = result.fetchone()
-                
-                if row:
-                    total_revenue = Decimal(str(row.total_revenue))
-                    return {
-                        "property_id": property_id,
-                        "tenant_id": tenant_id,
-                        "total": str(total_revenue),
-                        "currency": "USD", 
-                        "count": row.reservation_count
-                    }
-                else:
-                    # No reservations found for this property
+                rows = result.fetchall()
+
+                if len(rows) > 1:
+                    # - refuse rather than add EUR to USD; FX conversion is out of scope
+                    raise RevenueUnavailableError("Mixed currencies for one property cannot be summed")
+
+                if not rows:
                     return {
                         "property_id": property_id,
                         "tenant_id": tenant_id,
@@ -84,6 +87,15 @@ async def calculate_total_revenue(property_id: str, tenant_id: str) -> Dict[str,
                         "currency": "USD",
                         "count": 0
                     }
+
+                row = rows[0]
+                return {
+                    "property_id": property_id,
+                    "tenant_id": tenant_id,
+                    "total": str(to_cents(row.total_revenue)),
+                    "currency": row.currency,
+                    "count": row.reservation_count
+                }
         else:
             raise Exception("Database pool not available")
             
