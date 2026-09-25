@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 class RevenueUnavailableError(Exception):
@@ -13,36 +13,17 @@ def to_cents(amount) -> Decimal:
     # - cost: sub-cent detail stays in the DB only
     return Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-async def calculate_monthly_revenue(property_id: str, month: int, year: int, db_session=None) -> Decimal:
+async def calculate_monthly_revenue(property_id: str, tenant_id: str, month: int, year: int) -> Dict[str, Any]:
     """
-    Calculates revenue for a specific month.
+    Calculates revenue for a specific month in the property's local time zone.
     """
+    # - old stub used naive UTC month bounds and always returned 0
+    # - res-tz-1 checks in 2024-02-29 23:30 UTC = 1 March in Paris, so March totals were wrong
+    return await calculate_total_revenue(property_id, tenant_id, month=month, year=year)
 
-    start_date = datetime(year, month, 1)
-    if month < 12:
-        end_date = datetime(year, month + 1, 1)
-    else:
-        end_date = datetime(year + 1, 1, 1)
-        
-    print(f"DEBUG: Querying revenue for {property_id} from {start_date} to {end_date}")
-
-    # SQL Simulation (This would be executed against the actual DB)
-    query = """
-        SELECT SUM(total_amount) as total
-        FROM reservations
-        WHERE property_id = $1
-        AND tenant_id = $2
-        AND check_in_date >= $3
-        AND check_in_date < $4
-    """
-    
-    # In production this query executes against a database session.
-    # result = await db.fetch_val(query, property_id, tenant_id, start_date, end_date)
-    # return result or Decimal('0')
-    
-    return Decimal('0') # Placeholder for now until DB connection is finalized
-
-async def calculate_total_revenue(property_id: str, tenant_id: str) -> Dict[str, Any]:
+async def calculate_total_revenue(
+    property_id: str, tenant_id: str, month: Optional[int] = None, year: Optional[int] = None
+) -> Dict[str, Any]:
     """
     Aggregates revenue from database.
     """
@@ -59,20 +40,27 @@ async def calculate_total_revenue(property_id: str, tenant_id: str) -> Dict[str,
                 
                 # - currency was hardcoded to USD.
                 # - read it from the rows; GROUP BY currency surfaces mixed currencies.
+                # - month boundaries are evaluated in the property's own time zone (properties.timezone).
+                # - cost: expression on check_in_date skips the index; fine at this size
+                # - upgrade path: precompute UTC bounds per property
                 query = text("""
                     SELECT
-                        currency,
-                        SUM(total_amount) as total_revenue,
+                        r.currency,
+                        SUM(r.total_amount) as total_revenue,
                         COUNT(*) as reservation_count
-                    FROM reservations
-                    WHERE property_id = :property_id AND tenant_id = :tenant_id
-                    GROUP BY currency
+                    FROM reservations r
+                    JOIN properties p ON p.id = r.property_id AND p.tenant_id = r.tenant_id
+                    WHERE r.property_id = :property_id AND r.tenant_id = :tenant_id
+                      AND (
+                        CAST(:month AS int) IS NULL
+                        OR date_trunc('month', r.check_in_date AT TIME ZONE p.timezone)
+                           = make_timestamp(CAST(:year AS int), CAST(:month AS int), 1, 0, 0, 0)
+                      )
+                    GROUP BY r.currency
                 """)
+                params = {"property_id": property_id, "tenant_id": tenant_id, "month": month, "year": year}
 
-                result = await session.execute(query, {
-                    "property_id": property_id,
-                    "tenant_id": tenant_id
-                })
+                result = await session.execute(query, params)
                 rows = result.fetchall()
 
                 if len(rows) > 1:
