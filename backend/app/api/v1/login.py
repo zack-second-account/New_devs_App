@@ -144,7 +144,9 @@ async def login(request: LoginRequest):
             )
             
             # Resolve tenant ID
-            tenant_id = await TenantResolver.resolve_tenant_id(user_id=user.id, user_email=user.email)
+            tenant_id = await TenantResolver.resolve_tenant_id(
+                user_id=user.id, user_email=user.email, app_metadata=user.app_metadata
+            )
             
             # Create JWT token
             user_data = {

@@ -69,27 +69,19 @@ class TenantResolver:
         return None
 
     @staticmethod
-    async def resolve_tenant_id(user_id: str, user_email: str, token: Optional[str] = None) -> str:
+    async def resolve_tenant_id(
+        user_id: str, user_email: str, token: Optional[str] = None, app_metadata: Optional[dict] = None
+    ) -> Optional[str]:
         """
-        Resolve tenant ID for a user.
-        
-        Args:
-            user_id: User ID
-            user_email: User email
-            
-        Returns:
-            Tenant ID
+        Resolve tenant ID for a user from server-controlled claims.
         """
-        # Fallback mapping by known user email.
-        if user_email == "sunset@propertyflow.com":
-            return "tenant-a"
-        if user_email == "ocean@propertyflow.com":
-            return "tenant-b"
-        if user_email == "candidate@propertyflow.com":
-            return "tenant-a"
-            
-        # Default fallback
-        return "tenant-a"
+        # - a hardcoded email map sent every unknown user to tenant-a, so any other account read Sunset's data.
+        # - tenant only from app_metadata of a signature-verified token. user_metadata is user-editable, never trusted.
+        # - cost: accounts without a tenant claim get 403; fail closed
+        if app_metadata and app_metadata.get("tenant_id"):
+            return app_metadata["tenant_id"]
+        logger.warning(f"No tenant claim for user {user_id}")
+        return None
 
     @staticmethod
     async def update_user_tenant_metadata(user_id: str, tenant_id: str) -> None:
