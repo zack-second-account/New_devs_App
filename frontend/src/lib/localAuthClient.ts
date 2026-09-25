@@ -157,13 +157,18 @@ class LocalAuthClient {
 
         if (response.ok) {
           return { data: { session: this.session } };
-        } else {
-          // Session invalid, clear it
-          this.saveSession(null);
         }
+        // - any non-OK status (5xx, backend restart) used to sign the user out on every page load or poll
+        // - only a rejected token (401/403) ends the session; transient errors keep it
+        if (response.status === 401 || response.status === 403) {
+          this.saveSession(null);
+          return { data: { session: null } };
+        }
+        return { data: { session: this.session } };
       } catch (error) {
-        console.warn('[LocalAuth] Session validation failed:', error);
-        this.saveSession(null);
+        // - network error means the backend is unreachable, not that the token is invalid
+        console.warn('[LocalAuth] Session validation failed, keeping session:', error);
+        return { data: { session: this.session } };
       }
     }
 
