@@ -18,7 +18,12 @@ async def get_dashboard_summary(
     # - fell back to a shared "default_tenant".
     # - auth now guarantees a verified tenant; use it directly.
     tenant_id = current_user.tenant_id
-    
+
+    # - month without year built a NULL bound in SQL and silently returned 0.00.
+    # - require both or neither.
+    if (month is None) != (year is None):
+        raise HTTPException(status_code=422, detail="month and year must be provided together")
+
     try:
         revenue_data = await get_revenue_summary(property_id, tenant_id, month=month, year=year)
     except RevenueUnavailableError as e:
