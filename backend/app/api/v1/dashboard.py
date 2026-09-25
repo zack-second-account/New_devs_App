@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional
 from app.services.cache import get_revenue_summary
 from app.services.reservations import RevenueUnavailableError
+from app.services.properties import list_properties
 from app.core.auth import authenticate_request as get_current_user
 
 router = APIRouter()
@@ -32,3 +33,11 @@ async def get_dashboard_summary(
         "currency": revenue_data['currency'],
         "reservations_count": revenue_data['count']
     }
+
+
+@router.get("/dashboard/properties")
+async def get_dashboard_properties(current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    try:
+        return {"items": await list_properties(current_user.tenant_id)}
+    except Exception:
+        raise HTTPException(status_code=503, detail="Properties are temporarily unavailable")
