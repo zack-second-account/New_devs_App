@@ -9,7 +9,9 @@ interface PublicRouteProps {
 export default function PublicRoute({ children }: PublicRouteProps) {
   const auth = useAuth();
   const { user } = auth;
-  const loading = auth.status === 'initializing';
+  // - auth.status does not exist on the context, so this was always false and never waited for the stored session
+  // - on refresh the first render has no user yet, which bounced a logged-in user to /login
+  const loading = auth.isLoading;
   const location = useLocation();
 
   // Show loading state while checking auth
